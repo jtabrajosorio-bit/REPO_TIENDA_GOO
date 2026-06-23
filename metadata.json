@@ -1,0 +1,6 @@
+{
+  "name": "Tienda Goo!",
+  "description": "Plataforma premium multi-tenant para MYPEs peruanas con CRM de WhatsApp, campañas masivas automatizadas y cerrador de ventas con IA de Gemini.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

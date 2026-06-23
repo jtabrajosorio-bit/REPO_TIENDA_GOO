@@ -1,0 +1,38 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper to check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Attendance selfies
+    match /attendance/{storeId}/{userId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if request.auth.uid == userId;
+    }
+
+    // Profile photos
+    match /profiles/{userId}/{allPaths=**} {
+      // Profile photos are readable by authenticated users
+      allow read: if isSignedIn();
+      // Users can only upload or update their own profile directory
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Product photos
+    match /products/{storeId}/{fileName} {
+      // Product photos are visible to signed-in users of the app
+      allow read: if isSignedIn();
+      // Product photos can be uploaded by signed-in users
+      allow write: if isSignedIn();
+    }
+
+    // Expense photos
+    match /expenses/{storeId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+  }
+}

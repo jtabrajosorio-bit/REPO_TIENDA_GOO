@@ -1,0 +1,82 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    
+    function isStoreMember(storeId) {
+      return isAuthenticated() && userExists() && getUserData().storeId == storeId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && userExists() && getUserData().role == 'admin';
+    }
+
+    // Stores: Only members can read full details. 
+    // Allow listing for RUC uniqueness check (authenticated users).
+    match /stores/{storeId} {
+      allow get: if isStoreMember(storeId);
+      allow list: if isAuthenticated(); // Allows RUC uniqueness check
+      allow create: if isAuthenticated(); // Registration flow
+      allow update: if isStoreMember(storeId) && isAdmin();
+    }
+
+    // Users: Users can read their own profile. Admins can read/write users in their store.
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || (userExists() && isStoreMember(getUserData().storeId)));
+      allow create: if isAuthenticated(); // Self-registration or admin creating seller
+      allow update: if isAuthenticated() && (request.auth.uid == userId || (userExists() && isStoreMember(getUserData().storeId) && isAdmin()));
+    }
+
+    // Products: All store members can CRUD.
+    match /products/{productId} {
+      allow read: if isStoreMember(resource.data.storeId);
+      allow create: if isAuthenticated() && isStoreMember(request.resource.data.storeId);
+      allow update, delete: if isStoreMember(resource.data.storeId);
+    }
+
+    // Sales: All store members can read/create.
+    match /sales/{saleId} {
+      allow read: if isStoreMember(resource.data.storeId);
+      allow create: if isAuthenticated() && isStoreMember(request.resource.data.storeId);
+      allow update, delete: if isStoreMember(resource.data.storeId) && isAdmin();
+    }
+
+    // Attendance: All store members can read/create.
+    match /attendance/{attendanceId} {
+      allow read: if isStoreMember(resource.data.storeId);
+      allow create: if isAuthenticated() && isStoreMember(request.resource.data.storeId);
+      allow update, delete: if isStoreMember(resource.data.storeId) && isAdmin();
+    }
+
+    // Expenses: Only admins of the store can manage expenses.
+    match /expenses/{expenseId} {
+      allow read: if isAuthenticated() && userExists() && resource.data.storeId == getUserData().storeId && isAdmin();
+      allow create: if isAuthenticated() && userExists() && request.resource.data.storeId == getUserData().storeId && isAdmin();
+      allow update, delete: if isAuthenticated() && userExists() && resource.data.storeId == getUserData().storeId && isAdmin();
+    }
+
+    // AI Settings: Document ID is the storeId
+    match /ai_settings/{storeId} {
+      allow read: if isAuthenticated() && (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.storeId == storeId);
+      allow write: if isAuthenticated() && (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.storeId == storeId && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    // WhatsApp Chats: Queryable by storeId
+    match /whatsapp_chats/{chatId} {
+      allow read: if isAuthenticated() && (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (resource == null || resource.data.storeId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.storeId));
+      allow write: if isAuthenticated() && (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (request.resource == null || request.resource.data.storeId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.storeId));
+    }
+  }
+}

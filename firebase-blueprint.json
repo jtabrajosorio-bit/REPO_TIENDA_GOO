@@ -1,0 +1,172 @@
+{
+  "entities": {
+    "Store": {
+      "title": "Store",
+      "description": "A business entity in the multi-tenant system.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "ruc": { "type": "string", "description": "Registro Único de Contribuyentes (Peru)" },
+        "address": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ownerId", "ruc"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile with role and store association.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "seller"] },
+        "storeId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "password": { "type": "string" }
+      },
+      "required": ["email", "role", "storeId"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Inventory item.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "price": { "type": "number" },
+        "stock": { "type": "integer" },
+        "category": { "type": "string" },
+        "storeId": { "type": "string" }
+      },
+      "required": ["name", "price", "stock", "storeId"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Transaction record.",
+      "type": "object",
+      "properties": {
+        "total": { "type": "number" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "name": { "type": "string" },
+              "quantity": { "type": "integer" },
+              "price": { "type": "number" }
+            }
+          }
+        },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "storeId": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "documentType": { "type": "string", "enum": ["boleta", "factura"] }
+      },
+      "required": ["total", "items", "storeId", "sellerId", "timestamp"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Seller attendance record.",
+      "type": "object",
+      "properties": {
+        "storeId": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "imageUrl": { "type": "string" },
+        "type": { "type": "string", "enum": ["ingreso", "salida"] }
+      },
+      "required": ["storeId", "sellerId", "sellerName", "timestamp", "imageUrl", "type"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Store expense or outgoing transaction record (egreso).",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "item": { "type": "string" },
+        "quantity": { "type": "number" },
+        "supplier": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "storeId": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["amount", "item", "quantity", "supplier", "storeId", "createdBy", "createdAt"]
+    },
+    "AISettings": {
+      "title": "AISettings",
+      "type": "object",
+      "properties": {
+        "storeId": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "whatsappPhoneId": { "type": "string" },
+        "whatsappToken": { "type": "string" },
+        "verifyToken": { "type": "string" },
+        "personality": { "type": "string" },
+        "welcomeMessage": { "type": "string" }
+      },
+      "required": ["storeId", "isActive"]
+    },
+    "WhatsAppChat": {
+      "title": "WhatsAppChat",
+      "type": "object",
+      "properties": {
+        "storeId": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "customerName": { "type": "string" },
+        "lastMessage": { "type": "string" },
+        "lastTimestamp": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["open", "closed", "human_needed"] },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": { "type": "string", "enum": ["user", "model"] },
+              "text": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      },
+      "required": ["storeId", "customerPhone", "status"]
+    }
+  },
+  "firestore": {
+    "/stores/{storeId}": {
+      "schema": "Store",
+      "description": "Store configuration."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles."
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Inventory items."
+    },
+    "/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "Sales records."
+    },
+    "/attendance/{attendanceId}": {
+      "schema": "Attendance",
+      "description": "Attendance records."
+    },
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Expense (egreso) records."
+    },
+    "/ai_settings/{settingsId}": {
+      "schema": "AISettings",
+      "description": "AI & WhatsApp configuration."
+    },
+    "/whatsapp_chats/{chatId}": {
+      "schema": "WhatsAppChat",
+      "description": "Conversation history."
+    }
+  }
+}
