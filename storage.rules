@@ -7,32 +7,37 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function getUserData() {
+      return firestore.get(/databases/ai-studio-37be4d1f-598c-4ff7-a83b-4064aa6d995e/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isMemberOf(storeId) {
+      return isSignedIn() && getUserData().storeId == storeId;
+    }
+
     // Attendance selfies
     match /attendance/{storeId}/{userId}/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if request.auth.uid == userId;
+      allow read: if isMemberOf(storeId);
+      allow write: if request.auth.uid == userId && isMemberOf(storeId);
     }
 
     // Profile photos
     match /profiles/{userId}/{allPaths=**} {
-      // Profile photos are readable by authenticated users
       allow read: if isSignedIn();
-      // Users can only upload or update their own profile directory
       allow write: if isSignedIn() && request.auth.uid == userId;
     }
 
     // Product photos
     match /products/{storeId}/{fileName} {
-      // Product photos are visible to signed-in users of the app
-      allow read: if isSignedIn();
-      // Product photos can be uploaded by signed-in users
-      allow write: if isSignedIn();
+      allow read: if isMemberOf(storeId);
+      allow write: if isMemberOf(storeId);
     }
 
     // Expense photos
     match /expenses/{storeId}/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read: if isMemberOf(storeId);
+      allow write: if isMemberOf(storeId);
     }
   }
 }
+

@@ -2,81 +2,154 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper functions
-    function isAuthenticated() {
+    // -------------------------------------------------------------------------
+    // 0. Global Catch-all (Default Deny)
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // 1. Primitive Definitions & Helpers
+    // -------------------------------------------------------------------------
+    function isSignedIn() {
       return request.auth != null;
     }
     
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-
+    
     function userExists() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
     
     function isStoreMember(storeId) {
-      return isAuthenticated() && userExists() && getUserData().storeId == storeId;
+      return isSignedIn() && userExists() && getUserData().storeId == storeId;
     }
 
     function isAdmin() {
-      return isAuthenticated() && userExists() && getUserData().role == 'admin';
+      return isSignedIn() && userExists() && getUserData().role == 'admin';
     }
+
+    // -------------------------------------------------------------------------
+    // 2. Validation Blueprints
+    // -------------------------------------------------------------------------
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['storeId', 'role', 'email']) 
+        && data.storeId is string && data.storeId.size() <= 100
+        && data.role in ['admin', 'seller']
+        && data.email is string && data.email.size() <= 100
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100))
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 500));
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['storeId', 'name', 'stock', 'price'])
+        && data.storeId is string && data.storeId.size() <= 100
+        && data.name is string && data.name.size() <= 200
+        && data.stock is number
+        && data.price is number;
+    }
+
+    function isValidSale(data) {
+      return data.keys().hasAll(['storeId', 'total', 'sellerId', 'timestamp'])
+        && data.storeId is string && data.storeId.size() <= 100
+        && data.total is number
+        && data.sellerId is string && data.sellerId.size() <= 100
+        && data.timestamp is string; // or timestamp type if converted
+    }
+
+    function isValidAttendance(data) {
+      return data.keys().hasAll(['storeId', 'sellerId', 'type', 'timestamp'])
+        && data.storeId is string && data.storeId.size() <= 100
+        && data.sellerId is string && data.sellerId.size() <= 100
+        && data.type in ['ingreso', 'salida']
+        && data.timestamp is string;
+    }
+
+    function isValidExpense(data) {
+      return data.keys().hasAll(['storeId', 'amount', 'item', 'createdAt'])
+        && data.storeId is string && data.storeId.size() <= 100
+        && data.amount is number
+        && data.item is string && data.item.size() <= 500;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. Collection Rules
+    // -------------------------------------------------------------------------
 
     // Stores: Only members can read full details. 
-    // Allow listing for RUC uniqueness check (authenticated users).
     match /stores/{storeId} {
-      allow get: if isStoreMember(storeId);
-      allow list: if isAuthenticated(); // Allows RUC uniqueness check
-      allow create: if isAuthenticated(); // Registration flow
-      allow update: if isStoreMember(storeId) && isAdmin();
+      allow get: if isValidId(storeId) && isStoreMember(storeId);
+      allow list: if isSignedIn(); // Allows RUC/DNI uniqueness check queries
+      allow create: if isSignedIn(); // Initial registration
+      allow update: if isValidId(storeId) && isStoreMember(storeId) && isAdmin();
     }
 
-    // Users: Users can read their own profile. Admins can read/write users in their store.
+    // Users: Profile security
     match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || (userExists() && isStoreMember(getUserData().storeId)));
-      allow create: if isAuthenticated(); // Self-registration or admin creating seller
-      allow update: if isAuthenticated() && (request.auth.uid == userId || (userExists() && isStoreMember(getUserData().storeId) && isAdmin()));
+      allow read: if isSignedIn() && (request.auth.uid == userId || (userExists() && isStoreMember(getUserData().storeId)));
+      allow create: if isSignedIn() && isValidUser(incoming()) && request.auth.uid == userId;
+      allow update: if isSignedIn() && (
+        (request.auth.uid == userId && incoming().role == existing().role && incoming().storeId == existing().storeId) ||
+        (userExists() && isStoreMember(getUserData().storeId) && isAdmin())
+      ) && isValidUser(incoming());
     }
 
-    // Products: All store members can CRUD.
+    // Products: Store members only
     match /products/{productId} {
-      allow read: if isStoreMember(resource.data.storeId);
-      allow create: if isAuthenticated() && isStoreMember(request.resource.data.storeId);
-      allow update, delete: if isStoreMember(resource.data.storeId);
+      allow read: if isSignedIn() && userExists() && isStoreMember(existing().storeId);
+      allow create: if isSignedIn() && isStoreMember(incoming().storeId) && isValidProduct(incoming());
+      allow update: if isSignedIn() && isStoreMember(existing().storeId) && isValidProduct(incoming());
+      allow delete: if isSignedIn() && isStoreMember(existing().storeId) && isAdmin();
     }
 
-    // Sales: All store members can read/create.
+    // Sales: Store members only
     match /sales/{saleId} {
-      allow read: if isStoreMember(resource.data.storeId);
-      allow create: if isAuthenticated() && isStoreMember(request.resource.data.storeId);
-      allow update, delete: if isStoreMember(resource.data.storeId) && isAdmin();
+      allow read: if isSignedIn() && userExists() && isStoreMember(existing().storeId);
+      allow create: if isSignedIn() && isStoreMember(incoming().storeId) && isValidSale(incoming());
+      allow update, delete: if isSignedIn() && isStoreMember(existing().storeId) && isAdmin();
     }
 
-    // Attendance: All store members can read/create.
+    // Attendance: Tracking
     match /attendance/{attendanceId} {
-      allow read: if isStoreMember(resource.data.storeId);
-      allow create: if isAuthenticated() && isStoreMember(request.resource.data.storeId);
-      allow update, delete: if isStoreMember(resource.data.storeId) && isAdmin();
+      allow read: if isSignedIn() && userExists() && isStoreMember(existing().storeId);
+      allow create: if isSignedIn() && isStoreMember(incoming().storeId) && isValidAttendance(incoming());
+      allow update, delete: if isSignedIn() && isStoreMember(existing().storeId) && isAdmin();
     }
 
-    // Expenses: Only admins of the store can manage expenses.
+    // Expenses: Admin only for write, but read for members if needed (or admin-only)
+    // User requested "only admins of the store can manage expenses" previously
     match /expenses/{expenseId} {
-      allow read: if isAuthenticated() && userExists() && resource.data.storeId == getUserData().storeId && isAdmin();
-      allow create: if isAuthenticated() && userExists() && request.resource.data.storeId == getUserData().storeId && isAdmin();
-      allow update, delete: if isAuthenticated() && userExists() && resource.data.storeId == getUserData().storeId && isAdmin();
+      allow read: if isStoreMember(resource.data.storeId) && isAdmin();
+      allow create: if isStoreMember(incoming().storeId) && isAdmin() && isValidExpense(incoming());
+      allow update, delete: if isStoreMember(existing().storeId) && isAdmin() && isValidExpense(incoming());
     }
 
-    // AI Settings: Document ID is the storeId
+    // AI Settings & WhatsApp (derived access)
     match /ai_settings/{storeId} {
-      allow read: if isAuthenticated() && (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.storeId == storeId);
-      allow write: if isAuthenticated() && (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.storeId == storeId && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      allow read: if isValidId(storeId) && isStoreMember(storeId);
+      allow write: if isValidId(storeId) && isStoreMember(storeId) && isAdmin();
     }
 
-    // WhatsApp Chats: Queryable by storeId
     match /whatsapp_chats/{chatId} {
-      allow read: if isAuthenticated() && (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (resource == null || resource.data.storeId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.storeId));
-      allow write: if isAuthenticated() && (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (request.resource == null || request.resource.data.storeId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.storeId));
+      allow read: if isSignedIn() && userExists() && (resource == null || isStoreMember(existing().storeId));
+      allow write: if isSignedIn() && userExists() && (request.resource == null || isStoreMember(incoming().storeId));
     }
   }
 }
+
